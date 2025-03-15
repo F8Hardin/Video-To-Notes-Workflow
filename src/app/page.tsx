@@ -6,6 +6,8 @@ import { io, Socket } from "socket.io-client";
 
 var socketIOUrl = "http://localhost:2000";
 
+//hosted on port 3000
+
 // Define a type for chat messages
 type ChatMessage = {
   type: "sent" | "received";
@@ -18,9 +20,11 @@ export default function Home() {
   const [socket, setSocket] = useState<Socket | null>(null);
   // isLocked true means the input and button are disabled
   const [isLocked, setIsLocked] = useState(true);
+  const [myAgentManager, setAgentManager] = useState<Socket | null>(null);
 
   // Ref for the messages container
   const messageContainerRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     const socketIO = io(socketIOUrl);
@@ -28,6 +32,12 @@ export default function Home() {
 
     socketIO.on("connect", () => {
       console.log("Connected to socket io server with id:", socketIO.id);
+      socketIO.emit("connectingClient", { type : "WebClient" });
+    });
+
+    socketIO.on("clientReady", (data) => {
+      console.log("Client ready received from server:", data);
+      setAgentManager(data.socketId)
       setIsLocked(false);
     });
 
@@ -35,49 +45,12 @@ export default function Home() {
       console.log("Disconnected from Socket.IO server");
     });
 
-    socketIO.on("message", (message) => {
-      console.log("Message from server:", message);
+    socketIO.on("messageFromAgentManager", (data) => {
+      updateMessages("received", data)
     });
 
-    socketIO.on("startWatchingPlaylist_response", (message) => {
-      console.log("Received start watching confirmation.", message);
-      if (message.success) {
-        updateMessages("received", "Successfully initiated watching process.");
-      } else {
-        updateMessages("received", "Failed to initiate watching process. Please try again. " + message.error);
-        setIsLocked(false);
-      }
-    });
-
-    // Listen for the processComplete event to unlock the input and button
-    socketIO.on("onProcessingComplete", (message) => {
-      console.log("Process complete received, unlocking input.");
-      if (message.success) {
-        updateMessages("received", "Process is complete. You may now review the notes.");
-      } else {
-        updateMessages("received", "Process failed: " + message.error);
-      }
-      setIsLocked(false);
-    });
-
-    socketIO.on("onContentDownloaded", (message) => {
-      updateMessages("received", message.status);
-    });
-
-    socketIO.on("onAudioExtracted", (message) => {
-      updateMessages("received", message.status);
-    });
-
-    socketIO.on("onAudioTranscriptionComplete", (message) => {
-      updateMessages("received", message.status);
-    });
-
-    socketIO.on("onProcessProgress", (message) => {
-      updateMessages("received", message.status);
-    });
-
-    socketIO.on("onPlaylistFetch", (message) => {
-      updateMessages("received", message.status);
+    socketIO.on("messageFromSocketServer", (message) => {
+      console.log(message);
     });
 
     return () => {
@@ -103,8 +76,8 @@ export default function Home() {
   }
 
   function sendMessage(message: string) {
-    // Sends message to web socket server to initiate request
-    socket?.emit("startWatchingPlaylist", message);
+    // Sends message to web socket server to initiate request/
+    socket?.emit("forwardMessageToAgentManager", { agentManager: myAgentManager, data: message});
   }
 
   // Handler for sending a message
